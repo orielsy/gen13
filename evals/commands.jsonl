@@ -1,0 +1,3 @@
+{"utterance":"replace the glass with diamond","expectedCommand":{"op":"setSurfaceMaterial","target":"surface-1","side":"b","material":"diamond"},"context":{"selection":{"type":"surface","id":"surface-1"}}}
+{"utterance":"increase the refractive index of the glass to 1.7","expectedCommand":{"op":"setMaterialIor","target":"bk7","value":1.7},"context":{"selection":{"type":"material","id":"bk7"}}}
+{"utterance":"rotate that ray to 30 degrees","expectedCommand":{"op":"setRayAngle","target":"ray-1","degrees":30},"context":{"selection":{"type":"ray","id":"ray-1"}}}
