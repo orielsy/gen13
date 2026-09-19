@@ -9,6 +9,12 @@ import type {
 } from "./trace";
 
 /**
+ * Physics/math sources for the equations implemented in this file are recorded
+ * in docs/physics-references.md. Keep that document updated whenever a new
+ * physical law or geometric derivation enters the solver.
+ */
+
+/**
  * Floating-point geometry is never perfectly exact.
  *
  * EPSILON lets us treat values that are effectively zero as zero so tiny
@@ -99,6 +105,9 @@ function materialOrThrow(scene: Scene, id: string): Material {
  *              / (rayDirection · normal)
  *
  * A negative distance means the intersection is behind the ray and is ignored.
+ *
+ * Source: docs/physics-references.md §5 (Stanford CS348b ray/plane
+ * intersection derivation).
  */
 function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
   const direction = normalize(ray.direction);
@@ -185,9 +194,12 @@ function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
 /**
  * Mirror reflection of a vector around a surface normal.
  *
- * Because cosIncident = -n·d above, this is equivalent to the familiar:
+ * Because cosIncident = -n·d above, this is equivalent to:
  *
  *   r = d - 2(d·n)n
+ *
+ * Source: docs/physics-references.md §3 (law of reflection / PBRT vector
+ * reflection derivation).
  */
 function reflectedDirection(
   incoming: Vec2,
@@ -206,6 +218,8 @@ function reflectedDirection(
  *
  * We calculate S and P polarization separately, then average them for
  * unpolarized light.
+ *
+ * Source: docs/physics-references.md §4 (RP Photonics and PBRT).
  */
 function fresnel(
   n1: number,
@@ -279,6 +293,8 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
    *
    * Working with the squared sine lets us detect total internal reflection
    * before attempting to calculate a transmitted angle that does not exist.
+   *
+   * Source: docs/physics-references.md §1 (OpenStax refraction).
    */
   const eta = n1 / n2;
   const sinTransmittedSquared =
@@ -295,6 +311,9 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
      * Critical angle exists only when moving from larger n to smaller n:
      *
      *   theta_c = asin(n2 / n1)
+     *
+     * Source: docs/physics-references.md §2 (OpenStax total internal
+     * reflection).
      */
     const criticalAngle =
       n1 > n2 ? Math.asin(clamp(n2 / n1, -1, 1)) : Math.PI / 2;
@@ -328,6 +347,9 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
   /*
    * Vector form of Snell refraction. This gives us a direction vector suitable
    * for both future rendering and future multi-bounce propagation.
+   *
+   * Source: docs/physics-references.md §1 and §3; PBRT also implements the
+   * corresponding vector refraction form in its specular-transmission chapter.
    */
   const transmitted = normalize(
     add(
