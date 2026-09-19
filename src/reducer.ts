@@ -1,6 +1,11 @@
 import type { Command } from "./commands";
 import type { Material, RaySource, Scene, Surface2D } from "./scene";
 
+/**
+ * A command can be structurally valid but still reference something that does
+ * not exist in the current Scene. Those failures are domain errors rather than
+ * schema/validation errors.
+ */
 export class CommandDomainError extends Error {
   constructor(message: string) {
     super(message);
@@ -8,6 +13,10 @@ export class CommandDomainError extends Error {
   }
 }
 
+/**
+ * Scene stores direction as a unit vector, while the public command uses
+ * degrees because that is friendlier for humans and future UI controls.
+ */
 function degreesToDirection(degrees: number): { x: number; y: number } {
   const radians = (degrees * Math.PI) / 180;
   return {
@@ -16,6 +25,13 @@ function degreesToDirection(degrees: number): { x: number; y: number } {
   };
 }
 
+/**
+ * Apply one command and return a NEW Scene.
+ *
+ * We intentionally avoid mutating the input scene. Immutable state makes
+ * undo/redo, branching experiments, tests, and future "what if?" sweeps much
+ * easier because every state transition is explicit.
+ */
 export function applyCommand(scene: Scene, command: Command): Scene {
   switch (command.op) {
     case "setSurfaceMaterial": {
@@ -24,6 +40,9 @@ export function applyCommand(scene: Scene, command: Command): Scene {
       }
 
       let found = false;
+
+      // Only the targeted surface is replaced. Every other surface keeps the
+      // same object identity.
       const surfaces: Surface2D[] = scene.surfaces.map((surface) => {
         if (surface.id !== command.target) {
           return surface;
@@ -49,6 +68,8 @@ export function applyCommand(scene: Scene, command: Command): Scene {
         throw new CommandDomainError(`Unknown material: ${command.target}`);
       }
 
+      // Clone the material and its nested IOR model so the previous Scene
+      // remains untouched.
       const updated: Material = {
         ...material,
         ior: {
@@ -68,6 +89,7 @@ export function applyCommand(scene: Scene, command: Command): Scene {
 
     case "setRayAngle": {
       let found = false;
+
       const rays: RaySource[] = scene.rays.map((ray) => {
         if (ray.id !== command.target) {
           return ray;
