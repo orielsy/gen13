@@ -42,6 +42,21 @@ The first milestone is headless on purpose:
 
 No renderer, UI framework, WebGPU solver, or LLM is required for v0.0.
 
+## Physics and math sources
+
+The solver implements established geometrical-optics and ray-intersection equations; it does not invent the underlying physics.
+
+See [docs/physics-references.md](docs/physics-references.md) for the equations, derivations used by the implementation, and source references for:
+
+- Snell's law
+- total internal reflection and the critical angle
+- law of reflection / reflection vectors
+- Fresnel equations
+- ray/interface intersection
+- the Brewster-angle test oracle
+
+The code in `src/solve.ts` points back to the relevant sections of that document so a numerical result can be followed from source equation → implementation → Trace → test.
+
 ## Development
 
 Requires Node 22+.
@@ -61,6 +76,7 @@ npm run typecheck
 5. Trace events carry stable referents so an inspector or Genie can answer questions such as “why did that ray bend?”
 6. Do not generalize LIGHT into a multi-system engine until a second physical system creates evidence for an abstraction.
 7. WebGPU and WebLLM should earn their place through demonstrated need rather than being architectural prerequisites.
+8. New physical equations should include a durable source in `docs/physics-references.md` and an analytic test where practical.
 
 ## Relationship to orielsy.com
 
