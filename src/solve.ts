@@ -8,17 +8,41 @@ import type {
   Trace,
 } from "./trace";
 
+/**
+ * Floating-point geometry is never perfectly exact.
+ *
+ * EPSILON lets us treat values that are effectively zero as zero so tiny
+ * numerical noise does not create fake intersections or invalid vectors.
+ */
 const EPSILON = 1e-9;
 
+/**
+ * Internal description of the first surface a ray reaches.
+ *
+ * The public Scene describes surfaces. SurfaceHit is derived data created by
+ * the solver after it figures out where a specific ray intersects one.
+ */
 interface SurfaceHit {
   readonly surface: Surface2D;
   readonly at: Vec2;
   readonly distance: number;
+
+  /**
+   * The normal is re-oriented for this particular ray so it points back into
+   * the material the ray is currently leaving. That convention makes the
+   * refraction math below consistent no matter which side is entered.
+   */
   readonly normal: Vec2;
+
   readonly fromMaterial: Material;
   readonly toMaterial: Material;
 }
 
+/*
+ * The small vector helpers live here for now because v0.0 has very little math.
+ * If vector operations become substantial, that will be evidence for a real
+ * math module rather than a reason to create one preemptively.
+ */
 function dot(a: Vec2, b: Vec2): number {
   return a.x * b.x + a.y * b.y;
 }
@@ -31,6 +55,12 @@ function scale(v: Vec2, factor: number): Vec2 {
   return { x: v.x * factor, y: v.y * factor };
 }
 
+/**
+ * Convert an arbitrary direction/normal into a unit vector.
+ *
+ * Most of the optics formulas assume unit vectors. Normalizing here keeps the
+ * Scene format friendly: callers do not have to get vector length exactly 1.
+ */
 function normalize(v: Vec2): Vec2 {
   const length = Math.hypot(v.x, v.y);
 
@@ -59,11 +89,26 @@ function materialOrThrow(scene: Scene, id: string): Material {
   return material;
 }
 
+/**
+ * Find the closest compatible optical boundary in front of the ray.
+ *
+ * v0.0 surfaces are infinite lines in 2D. The equation here is the standard
+ * ray/plane intersection written for two dimensions:
+ *
+ *   distance = ((surfacePoint - rayOrigin) · normal)
+ *              / (rayDirection · normal)
+ *
+ * A negative distance means the intersection is behind the ray and is ignored.
+ */
 function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
   const direction = normalize(ray.direction);
   let nearest: SurfaceHit | null = null;
 
   for (const surface of scene.surfaces) {
+    /*
+     * A surface only makes sense for this ray if the ray says it is currently
+     * inside one of the two materials separated by that surface.
+     */
     const fromA = ray.medium === surface.materialA;
     const fromB = ray.medium === surface.materialB;
 
@@ -74,6 +119,7 @@ function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
     const geometricNormal = normalize(surface.normal);
     const denominator = dot(direction, geometricNormal);
 
+    // A near-zero denominator means the ray is parallel to the interface.
     if (Math.abs(denominator) <= EPSILON) {
       continue;
     }
@@ -87,15 +133,31 @@ function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
         geometricNormal,
       ) / denominator;
 
+    // Ignore surfaces behind the ray or effectively at its origin.
     if (distance <= EPSILON) {
       continue;
     }
 
+    // We only need the first interaction in v0.0.
     if (nearest && distance >= nearest.distance) {
       continue;
     }
 
+    /*
+     * Surface2D.normal always points A -> B.
+     *
+     * For the optics equations we want a normal that points back toward the
+     * incident medium. If the ray is leaving A, flip the stored normal.
+     */
     const normal = fromA ? scale(geometricNormal, -1) : geometricNormal;
+
+    /*
+     * For normalized vectors:
+     *
+     *   cos(theta_i) = -normal · incoming
+     *
+     * theta_i is the incident angle measured from the normal.
+     */
     const cosIncident = -dot(normal, direction);
 
     if (cosIncident <= EPSILON) {
@@ -120,10 +182,31 @@ function findNearestHit(scene: Scene, ray: RaySource): SurfaceHit | null {
   return nearest;
 }
 
-function reflectedDirection(incoming: Vec2, normal: Vec2, cosIncident: number): Vec2 {
+/**
+ * Mirror reflection of a vector around a surface normal.
+ *
+ * Because cosIncident = -n·d above, this is equivalent to the familiar:
+ *
+ *   r = d - 2(d·n)n
+ */
+function reflectedDirection(
+  incoming: Vec2,
+  normal: Vec2,
+  cosIncident: number,
+): Vec2 {
   return normalize(add(incoming, scale(normal, 2 * cosIncident)));
 }
 
+/**
+ * Fresnel equations for a dielectric boundary.
+ *
+ * They answer a different question from Snell's law:
+ * - Snell: where does the transmitted ray go?
+ * - Fresnel: how much energy reflects vs. transmits?
+ *
+ * We calculate S and P polarization separately, then average them for
+ * unpolarized light.
+ */
 function fresnel(
   n1: number,
   n2: number,
@@ -147,9 +230,21 @@ function fresnel(
   };
 }
 
+/**
+ * Solve the first optical interaction for one source ray.
+ *
+ * v0.0 intentionally stops after one event. Multi-bounce tracing will be
+ * introduced only when we are ready to propagate the reflected/transmitted
+ * child rays as new simulation work.
+ */
 function solveRay(scene: Scene, ray: RaySource): RayTrace {
   const incoming = normalize(ray.direction);
   const hit = findNearestHit(scene, ray);
+
+  /*
+   * Event IDs are deterministic. Running the same Scene twice produces the
+   * same referent, which matters for selection, tests, and future Genie context.
+   */
   const eventId = `${ray.id}:event:0`;
 
   if (!hit) {
@@ -169,14 +264,38 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
 
   const n1 = iorAtWavelength(hit.fromMaterial, ray.wavelengthNm);
   const n2 = iorAtWavelength(hit.toMaterial, ray.wavelengthNm);
+
   const cosIncident = clamp(-dot(hit.normal, incoming), -1, 1);
   const thetaIncident = Math.acos(cosIncident);
+
+  /*
+   * Snell's law:
+   *
+   *   n1 sin(theta1) = n2 sin(theta2)
+   *
+   * Rearranged:
+   *
+   *   sin(theta2)^2 = (n1 / n2)^2 * (1 - cos(theta1)^2)
+   *
+   * Working with the squared sine lets us detect total internal reflection
+   * before attempting to calculate a transmitted angle that does not exist.
+   */
   const eta = n1 / n2;
   const sinTransmittedSquared =
     eta * eta * Math.max(0, 1 - cosIncident * cosIncident);
+
   const reflected = reflectedDirection(incoming, hit.normal, cosIncident);
 
+  /*
+   * If sin(theta2)^2 > 1, Snell's law has no real transmitted solution:
+   * total internal reflection.
+   */
   if (sinTransmittedSquared > 1) {
+    /*
+     * Critical angle exists only when moving from larger n to smaller n:
+     *
+     *   theta_c = asin(n2 / n1)
+     */
     const criticalAngle =
       n1 > n2 ? Math.asin(clamp(n2 / n1, -1, 1)) : Math.PI / 2;
 
@@ -200,7 +319,16 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
     return { rayId: ray.id, events: [event] };
   }
 
+  /*
+   * A transmitted solution exists. cos(theta2) follows from
+   * sin^2(theta2) + cos^2(theta2) = 1.
+   */
   const cosTransmitted = Math.sqrt(Math.max(0, 1 - sinTransmittedSquared));
+
+  /*
+   * Vector form of Snell refraction. This gives us a direction vector suitable
+   * for both future rendering and future multi-bounce propagation.
+   */
   const transmitted = normalize(
     add(
       scale(incoming, eta),
@@ -220,7 +348,9 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
     n1,
     n2,
     thetaIncidentDeg: toDegrees(thetaIncident),
-    thetaTransmittedDeg: toDegrees(Math.asin(Math.sqrt(sinTransmittedSquared))),
+    thetaTransmittedDeg: toDegrees(
+      Math.asin(Math.sqrt(sinTransmittedSquared)),
+    ),
     incomingDirection: incoming,
     transmittedDirection: transmitted,
     reflectedDirection: reflected,
@@ -230,6 +360,12 @@ function solveRay(scene: Scene, ray: RaySource): RayTrace {
   return { rayId: ray.id, events: [event] };
 }
 
+/**
+ * Public solver entry point.
+ *
+ * Scene goes in; Trace comes out. No mutation, no DOM, no rendering, and no
+ * hidden state. That purity is the central v0.0 architectural constraint.
+ */
 export function solve(scene: Scene): Trace {
   return {
     sceneVersion: scene.version,
