@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Gen13 LIGHT — an inspectable deterministic optics experiment."
+    />
+    <title>Gen13 — LIGHT</title>
+    <link rel="stylesheet" href="/src/app/styles.css" />
+  </head>
+  <body>
+    <main class="lab-shell">
+      <header class="lab-header">
+        <div>
+          <p class="eyebrow">GEN13 / LIGHT / v0.1</p>
+          <h1>Let there be light.</h1>
+          <p class="lede">
+            A deterministic optics trace, rendered without putting physics in
+            the renderer.
+          </p>
+        </div>
+
+        <div class="pipeline" aria-label="Gen13 data flow">
+          <span>Scene</span>
+          <span aria-hidden="true">→</span>
+          <span>Command</span>
+          <span aria-hidden="true">→</span>
+          <span>Solve</span>
+          <span aria-hidden="true">→</span>
+          <span>Trace</span>
+          <span aria-hidden="true">→</span>
+          <strong>SVG</strong>
+        </div>
+      </header>
+
+      <section class="lab-grid">
+        <aside class="panel controls-panel" aria-labelledby="controls-title">
+          <div class="panel-heading">
+            <p class="kicker">Manipulate</p>
+            <h2 id="controls-title">Scene controls</h2>
+          </div>
+
+          <label class="control">
+            <span class="control-row">
+              <span>Incident angle</span>
+              <output id="angle-output" for="angle-input">45°</output>
+            </span>
+            <input
+              id="angle-input"
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              value="45"
+            />
+          </label>
+
+          <label class="control">
+            <span>Material after boundary</span>
+            <select id="material-input">
+              <option value="water">Water</option>
+              <option value="bk7" selected>BK7 glass</option>
+              <option value="diamond">Diamond</option>
+            </select>
+          </label>
+
+          <div class="command-card">
+            <span class="command-label">Last command</span>
+            <pre id="command-output">No command dispatched yet.</pre>
+          </div>
+
+          <p class="hint">
+            These controls do not mutate the scene directly. They dispatch the
+            same validated commands Genie will eventually use.
+          </p>
+        </aside>
+
+        <section class="stage-panel" aria-labelledby="stage-title">
+          <div class="stage-heading">
+            <div>
+              <p class="kicker">Visualize</p>
+              <h2 id="stage-title">Trace viewer</h2>
+            </div>
+            <p class="stage-note">Click the interaction point to inspect it.</p>
+          </div>
+
+          <div class="stage-frame">
+            <svg
+              id="trace-view"
+              role="img"
+              aria-label="Optical ray trace"
+              viewBox="-450 -400 900 800"
+              preserveAspectRatio="xMidYMid meet"
+            ></svg>
+          </div>
+
+          <div class="legend" aria-label="Trace legend">
+            <span><i class="legend-line incident"></i>incident</span>
+            <span><i class="legend-line reflected"></i>reflected</span>
+            <span><i class="legend-line transmitted"></i>transmitted</span>
+            <span><i class="legend-line normal"></i>surface normal</span>
+          </div>
+        </section>
+
+        <aside class="panel inspector-panel" aria-labelledby="inspector-title">
+          <div class="panel-heading">
+            <p class="kicker">Inspect</p>
+            <h2 id="inspector-title">Trace evidence</h2>
+          </div>
+          <div id="inspector"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

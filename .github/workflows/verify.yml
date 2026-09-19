@@ -30,3 +30,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Build browser experiment
+        run: npm run build
