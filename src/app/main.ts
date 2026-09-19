@@ -6,25 +6,26 @@ import { createDemoScene } from "./demo-scene";
 import { renderInspector } from "./inspector";
 import { renderTrace, type TraceSelection } from "./render";
 
-const svg = document.querySelector<SVGSVGElement>("#trace-view");
-const inspector = document.querySelector<HTMLElement>("#inspector");
-const angleInput = document.querySelector<HTMLInputElement>("#angle-input");
-const angleOutput = document.querySelector<HTMLOutputElement>("#angle-output");
-const materialInput =
-  document.querySelector<HTMLSelectElement>("#material-input");
-const commandOutput =
-  document.querySelector<HTMLElement>("#command-output");
+function requiredElement<T extends Element>(
+  selector: string,
+): T {
+  const element = document.querySelector<T>(selector);
 
-if (
-  !svg ||
-  !inspector ||
-  !angleInput ||
-  !angleOutput ||
-  !materialInput ||
-  !commandOutput
-) {
-  throw new Error("Gen13 LIGHT could not find its required DOM elements.");
+  if (!element) {
+    throw new Error(`Gen13 LIGHT could not find required element: ${selector}`);
+  }
+
+  return element;
 }
+
+const svg = requiredElement<SVGSVGElement>("#trace-view");
+const inspector = requiredElement<HTMLElement>("#inspector");
+const angleInput = requiredElement<HTMLInputElement>("#angle-input");
+const angleOutput = requiredElement<HTMLOutputElement>("#angle-output");
+const materialInput =
+  requiredElement<HTMLSelectElement>("#material-input");
+const commandOutput =
+  requiredElement<HTMLElement>("#command-output");
 
 let scene = createDemoScene();
 let trace: Trace = solve(scene);
@@ -39,7 +40,9 @@ function selectedEvent(): TraceEvent | null {
   }
 
   for (const rayTrace of trace.rays) {
-    const event = rayTrace.events.find((candidate) => candidate.id === selection?.id);
+    const event = rayTrace.events.find(
+      (candidate) => candidate.id === selection?.id,
+    );
 
     if (event) {
       return event;
